@@ -2,3 +2,5 @@
 /test1
 /test2
 /cmake-build-debug/
+/.idea
+/.DS_Store
