@@ -1,64 +1,70 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <sys/ioctl.h>
 #include <errno.h>
+#include <sys/ioctl.h>
+#include <getopt.h>
 
-#define MAX 10000
+#define MAX 8192
 
-void write_to(int place, char *buf, int count);
+void print_error();
 
-mode_t command_flag_parser(const char **argv, int argc, int *filePosition, bool *Flag);
+void write_to(int file_desc, char *buf, long count);
+
+void close_file(int file_desc);
+
+char *read_from_stdin(int *read_count);
+
+mode_t command_flag_parser(char **argv, int argc, int *filePosition);
 
 bool is_stdin_empty(void);
 
-int command_processor(int argc, const char *argv[]);
+int command_processor(int argc, char **argv);
 
-int write_in_file(const char **argv, mode_t mode, char *buf, int count, int argc, int filePosition);
-
-char *read_line(int *read_count);
-
-char *read_from_stdin(int *count);
 
 void sighandler(int signal);
 
-int main(int argc, const char *argv[]) {
+int main(int argc, char **argv) {
     return command_processor(argc, argv);
 }
 
-int command_processor(int argc, const char **argv) {
-    int count = 0;
-    int ptrSize = 1;
+int *open_file(char **argv, mode_t mode, int argc, int file_position, int *files_count) {
+    int *files_desc = malloc(sizeof(int) * argc);
+    int j = 0;
+    for (int i = file_position; i < argc; ++i) {
+        int fileDescriptor;
+        if (strcmp(argv[i], ">") == 0) {
+            mode = O_WRONLY | O_TRUNC;
+            i++;
+        } else if (strcmp(argv[i], ">>") == 0) {
+            mode = O_WRONLY | O_APPEND;
+            i++;
+        } else if ((strcmp(argv[i], "--") == 0)) i++;
+        fileDescriptor = open(argv[i], mode | O_CREAT, 0644);
+        if (fileDescriptor < 0)
+            print_error();
+        files_desc[j++] = fileDescriptor;
+    }
+    *files_count = j;
+    return files_desc;
+}
+
+int command_processor(int argc, char **argv) {
+//    int count = 0;
+//    int ptrSize = 1;
     char c[1];
     c[0] = (char) 0;
-    bool Flag = false;
-    char *ptr = malloc(sizeof(char));
+//    char *ptr = malloc(sizeof(char));
     int filePosition = 1;
-    mode_t mode = command_flag_parser(argv, argc, &filePosition, &Flag);
-    if (Flag) signal(SIGINT, sighandler);
-    if (!is_stdin_empty()) {
-        write_in_file(argv, mode, &c[0], count, argc, filePosition);
-        mode = O_WRONLY | O_APPEND;
-        do {
-            char *buf = read_from_stdin(&count);
-            write_in_file(argv, mode, buf, count, argc, filePosition);
-            free(buf);
-        } while (count != 0);
-    } else {
-        while (1) {
-            if (ptrSize == 0) mode = O_WRONLY | O_APPEND;
-            char *tmp = read_line(&count);
-            ptrSize = count;
-            ptr = realloc(ptr, sizeof(char) * ptrSize);
-            memcpy(ptr, tmp, ptrSize);
-            write_in_file(argv, mode, ptr, ptrSize, argc, filePosition);
-            ptrSize = 0;
-        }
-    }
+    mode_t mode = command_flag_parser(argv, argc, &filePosition);
+    int files_count = 0;
+    int *files = open_file(argv, mode, argc, filePosition, &files_count);
     return 0;
 }
+
 
 char *read_line(int *read_count) {
     *read_count = 0;
@@ -87,49 +93,47 @@ char *read_from_stdin(int *read_count) {
 }
 
 
-int write_in_file(const char **argv, mode_t mode, char *buf, int count, int argc, int filePosition) {
-    for (int i = filePosition; i < argc; ++i) {
-        int fileDescriptor;
-        if (strcmp(argv[i], ">") == 0) {
-            //large file done in cmake file
-            mode = O_WRONLY | O_TRUNC;
-            i++;
-        } else if (strcmp(argv[i], ">>") == 0) {
-            mode = O_WRONLY | O_APPEND;
-            i++;
-        }
-        fileDescriptor = open(argv[i], mode | O_CREAT, 0644);
-        if (fileDescriptor < 0) {
-            return 1;
-        }
-        write_to(fileDescriptor, buf, count);
-        if (close(fileDescriptor) < 0) return 1;
-    }
-    return 0;
-}
+//int write_in_file(char *buf, int count) {
+//    write_to(fileDescriptor, buf, count);
+//    close_file(fileDescriptor);
+//    return 0;
+//}
 
-
-mode_t command_flag_parser(const char **argv, int argc, int *filePosition, bool *Flag) {
+mode_t command_flag_parser(char **argv, int argc, int *filePosition) {
     *filePosition = 1;
-    //large file done in cmake file
     mode_t mode = O_WRONLY | O_TRUNC;
-    if (argc >= 3) {
-        if (strcmp(argv[1], "-a") == 0 || strcmp(argv[2], "-a") == 0) {
-            mode = O_WRONLY | O_APPEND;
-            ++*filePosition;
-        }
-        if (strcmp(argv[1], "-i") == 0 || strcmp(argv[2], "-i") == 0) {
-            ++*filePosition;
-            *Flag = true;
-        }
-    } else if (argc >= 2) {
-        if (strcmp(argv[1], "-a") == 0) {
-            mode = O_WRONLY | O_APPEND;
-            ++*filePosition;
-        }
-        if (strcmp(argv[1], "-i") == 0) {
-            *Flag = true;
-            ++*filePosition;
+
+    const char *short_options = "ai";
+
+    const struct option long_options[] = {
+            {"help", no_argument, NULL, 'h'}
+    };
+    int val;
+    opterr = 0;
+    while ((val = getopt_long(argc, argv, short_options,
+                              long_options, NULL)) != -1) {
+        switch (val) {
+            case 'h': {
+                if ((strcmp(argv[1], "--help") == 0)) {
+                    write_to(STDERR_FILENO, "usage: tee [-ai] [file ...]\n", 29);
+                    exit(0);
+                }
+                break;
+            }
+            case 'a': {
+                ++*filePosition;
+                mode = O_WRONLY | O_APPEND;
+                break;
+            }
+
+            case 'i': {
+                (void) signal(SIGINT, SIG_IGN);
+                ++*filePosition;
+                break;
+            }
+            case '?':
+            default:
+                break;
         }
     }
     return mode;
@@ -144,20 +148,26 @@ bool is_stdin_empty(void) {
     int ret;
     FD_ZERO(&rd);
     FD_SET(STDIN_FILENO, &rd);
-    //allow a program to monitor multiple file
-    //       descriptors, waiting until one or more of the file descriptors become
-    //       "ready" for some class of I/O operation
-//    This blocks the program until input or output is ready on a specified set of file descriptors, or until a timer expires, whichever comes first.
     ret = select(1, &rd, NULL, NULL, &tv);
     return (ret == 0);
 }
 
-void write_to(int place, char *buf, int count) {
+void write_to(int file_desc, char *buf, long count) {
     ssize_t bytes_read = 0;
     ssize_t n = 0;
     do {
-        n = write(place, buf + bytes_read, count - bytes_read);
-        if (n == -1) exit(EIO);
+        n = write(file_desc, buf + bytes_read, count - bytes_read);
+        if (n == -1) print_error();
         bytes_read += n;
     } while (bytes_read < count);
+}
+
+
+void close_file(int file_desc) {
+    if (close(file_desc) < 0) print_error();
+}
+
+void print_error() {
+    char *error = strerror(errno);
+    write_to(STDERR_FILENO, error, strlen(error));
 }
