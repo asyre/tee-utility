@@ -95,34 +95,6 @@ mode_t command_flag_parser(char **argv, int argc, int *filePosition) {
                 exit(0);
         }
     }
-
-//    const char *short_options = "ai";
-//
-//    const struct option long_options[] = {
-//            {"help", no_argument, NULL, 'h'}
-//    };
-//    while ((val = getopt_long(argc, argv, short_options,
-//                              long_options, NULL)) != -1) {
-//        switch (val) {
-//            case 'a': {
-//                ++*filePosition;
-//                mode = O_WRONLY | O_APPEND;
-//                break;
-//            }
-//
-//            case 'i': {
-//                (void) signal(SIGINT, SIG_IGN);
-//                ++*filePosition;
-//                break;
-//            }
-//            case '?':
-//            default:
-//            case 'h': {
-//                write_to(STDERR_FILENO, "usage: tee [-ai] [file ...]\n", 29);
-//                exit(0);
-//            }
-//        }
-//    }
     return mode;
 }
 
