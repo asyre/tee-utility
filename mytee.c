@@ -35,10 +35,11 @@ int *open_file(char **argv, mode_t mode, int argc, int file_position, int *files
             mode = O_WRONLY | O_APPEND;
             i++;
         }
-//        } else if ((strcmp(argv[i], "--") == 0)) i++;
         fileDescriptor = open(argv[i], mode | O_CREAT, 0644);
-        if (fileDescriptor < 0)
+        if (fileDescriptor < 0) {
             print_error();
+            exit(1);
+        }
         files_desc[j++] = fileDescriptor;
     }
     *files_count = j;
@@ -47,8 +48,6 @@ int *open_file(char **argv, mode_t mode, int argc, int file_position, int *files
 
 int command_processor(int argc, char **argv) {
     int count = 0;
-    char c[1];
-    c[0] = (char) 0;
     int filePosition = 1;
     mode_t mode = command_flag_parser(argv, argc, &filePosition);
     int files_count = 0;
@@ -70,6 +69,10 @@ char *read_from_stdin(int *read_count) {
     *read_count = 0;
     char *lines = malloc(sizeof(char) * MAX);
     *read_count = read(STDIN_FILENO, lines, MAX);
+    if (*read_count == -1) {
+        print_error();
+        exit(1);
+    }
     write_to(STDOUT_FILENO, lines, *read_count);
     return lines;
 }
@@ -79,16 +82,17 @@ mode_t command_flag_parser(char **argv, int argc, int *filePosition) {
     *filePosition = 1;
     mode_t mode = O_WRONLY | O_TRUNC;
     int val;
-//    opterr = 0;
     while ((val = getopt(argc, argv, "ai")) != -1) {
         switch (val) {
             case 'a':
                 ++*filePosition;
                 mode = O_WRONLY | O_APPEND;
+                if (strcmp(argv[*filePosition], "--") == 0) ++*filePosition;
                 break;
             case 'i':
                 (void) signal(SIGINT, SIG_IGN);
                 ++*filePosition;
+                if (strcmp(argv[*filePosition], "--") == 0) ++*filePosition;
                 break;
             default:
                 write_to(STDERR_FILENO, "usage: tee [-ai] [file ...]\n", 29);
@@ -104,7 +108,10 @@ void write_to(int file_desc, char *buf, long count) {
     ssize_t n = 0;
     do {
         n = write(file_desc, buf + bytes_read, count - bytes_read);
-        if (n == -1) print_error();
+        if (n == -1) {
+            print_error();
+            exit(1);
+        }
         bytes_read += n;
     } while (bytes_read < count);
 }
