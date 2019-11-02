@@ -1,5 +1,5 @@
 # Tee implementation in C
-Completed as part of the course System-level Software.
+Completed as part of the System-level Software course.
 
 # Usage
 ```
